@@ -4,7 +4,7 @@ import threading
 import time
 
 from backend.app.core.config import settings
-from backend.app.core.prompts import CV_EXTRACTION_PROMPT
+from backend.app.core.prompts import CV_EXTRACTION_PROMPT, SKILLS_ENRICHMENT_PROMPT
 
 
 class LLMService:
@@ -23,7 +23,11 @@ class LLMService:
 
         if self.api_key:
             try:
-                return self._call_groq_with_retries(cv_text)
+                parsed = self._call_groq_with_retries(
+                    system_prompt=CV_EXTRACTION_PROMPT,
+                    user_content=cv_text[:120000],
+                )
+                return self._enrich_skills_if_missing(parsed, cv_text)
             except Exception as exc:
                 return self._heuristic_parse(
                     cv_text,
@@ -38,11 +42,10 @@ class LLMService:
             note="GROQ_API_KEY not found in runtime environment; used heuristic fallback.",
         )
 
-    def _call_groq_with_retries(self, cv_text: str) -> dict:
+    def _call_groq_with_retries(self, system_prompt: str, user_content: str) -> dict:
         from groq import Groq
 
         client = Groq(api_key=self.api_key)
-        user_content = cv_text[:120000]
         parse_error = ""
         last_raw = ""
 
@@ -65,7 +68,7 @@ class LLMService:
                 model=self.model,
                 temperature=0,
                 messages=[
-                    {"role": "system", "content": CV_EXTRACTION_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
                 ],
             )
@@ -79,6 +82,45 @@ class LLMService:
 
         # Raise after retries so caller can gracefully use fallback parser.
         raise ValueError(f"Invalid JSON after {self.max_json_retries} attempts. Last error: {parse_error}")
+
+    def _enrich_skills_if_missing(self, parsed: dict, cv_text: str) -> dict:
+        if not isinstance(parsed, dict):
+            return parsed
+        if not self._is_skills_empty(parsed):
+            return parsed
+
+        cv_snippet = cv_text[:120000]
+        structured_json = json.dumps(parsed, ensure_ascii=False)
+        user_content = (
+            "Populate only the skills field from this extracted candidate JSON.\n\n"
+            f"Extracted candidate JSON:\n{structured_json}\n\n"
+            "Source CV text:\n"
+            f"{cv_snippet}"
+        )
+
+        try:
+            skills_payload = self._call_groq_with_retries(
+                system_prompt=SKILLS_ENRICHMENT_PROMPT,
+                user_content=user_content,
+            )
+        except Exception:
+            return parsed
+
+        skills = skills_payload.get("skills", []) if isinstance(skills_payload, dict) else []
+        if isinstance(skills, list):
+            parsed["skills"] = [str(s).strip() for s in skills if str(s).strip()]
+        return parsed
+
+    def _is_skills_empty(self, payload: dict) -> bool:
+        if not isinstance(payload, dict):
+            return True
+        skills = payload.get("skills")
+        if skills is None:
+            return True
+        if isinstance(skills, list):
+            cleaned = [str(s).strip() for s in skills if str(s).strip()]
+            return len(cleaned) == 0
+        return not str(skills).strip()
 
     def _wait_before_groq_call(self) -> None:
         if self.request_pause_seconds <= 0:
