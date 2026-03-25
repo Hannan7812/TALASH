@@ -1,6 +1,13 @@
 from pathlib import Path
 import os
 
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# Load project-level .env so CLI and API runs share the same environment values.
+load_dotenv(PROJECT_ROOT / ".env")
+
 
 def _as_bool(value: str, default: bool = False) -> bool:
     if value is None:
@@ -18,7 +25,7 @@ def _normalize_database_url(url: str) -> str:
 
 
 class Settings:
-    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    PROJECT_ROOT = PROJECT_ROOT
     BACKEND_ROOT = PROJECT_ROOT / "backend"
     DATA_DIR = BACKEND_ROOT / "data"
     RAW_CV_DIR = DATA_DIR / "raw_cvs"
@@ -34,6 +41,7 @@ class Settings:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     LLM_MAX_JSON_RETRIES = int(os.getenv("LLM_MAX_JSON_RETRIES", "3"))
+    LLM_REQUEST_PAUSE_SECONDS = float(os.getenv("LLM_REQUEST_PAUSE_SECONDS", "5.0"))
 
 
 settings = Settings()

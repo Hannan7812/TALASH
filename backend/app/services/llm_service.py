@@ -1,15 +1,21 @@
 ﻿import json
 import re
+import threading
+import time
 
 from backend.app.core.config import settings
 from backend.app.core.prompts import CV_EXTRACTION_PROMPT
 
 
 class LLMService:
+    _throttle_lock = threading.Lock()
+    _last_request_monotonic = 0.0
+
     def __init__(self) -> None:
         self.api_key = settings.GROQ_API_KEY
         self.model = settings.GROQ_MODEL
         self.max_json_retries = max(1, settings.LLM_MAX_JSON_RETRIES)
+        self.request_pause_seconds = max(0.0, settings.LLM_REQUEST_PAUSE_SECONDS)
 
     def parse_cv_text(self, cv_text: str) -> dict:
         if not cv_text.strip():
@@ -18,10 +24,19 @@ class LLMService:
         if self.api_key:
             try:
                 return self._call_groq_with_retries(cv_text)
-            except Exception:
-                return self._heuristic_parse(cv_text)
+            except Exception as exc:
+                return self._heuristic_parse(
+                    cv_text,
+                    note=(
+                        "LLM extraction failed; used heuristic fallback. "
+                        f"Reason: {type(exc).__name__}."
+                    ),
+                )
 
-        return self._heuristic_parse(cv_text)
+        return self._heuristic_parse(
+            cv_text,
+            note="GROQ_API_KEY not found in runtime environment; used heuristic fallback.",
+        )
 
     def _call_groq_with_retries(self, cv_text: str) -> dict:
         from groq import Groq
@@ -44,6 +59,8 @@ class LLMService:
                     f"{user_content}"
                 )
 
+            self._wait_before_groq_call()
+
             response = client.chat.completions.create(
                 model=self.model,
                 temperature=0,
@@ -63,6 +80,18 @@ class LLMService:
         # Raise after retries so caller can gracefully use fallback parser.
         raise ValueError(f"Invalid JSON after {self.max_json_retries} attempts. Last error: {parse_error}")
 
+    def _wait_before_groq_call(self) -> None:
+        if self.request_pause_seconds <= 0:
+            return
+
+        with self._throttle_lock:
+            now = time.monotonic()
+            elapsed = now - self._last_request_monotonic
+            remaining = self.request_pause_seconds - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+            self._last_request_monotonic = time.monotonic()
+
     def _load_json(self, raw: str) -> dict:
         raw = raw.strip()
         if raw.startswith("```"):
@@ -76,7 +105,7 @@ class LLMService:
                 raise
             return json.loads(match.group(0))
 
-    def _heuristic_parse(self, cv_text: str) -> dict:
+    def _heuristic_parse(self, cv_text: str, note: str) -> dict:
         lines = [line.strip() for line in cv_text.splitlines() if line.strip()]
         first = lines[0] if lines else ""
 
@@ -100,7 +129,7 @@ class LLMService:
             "books": [],
             "meta": {
                 "parser": "heuristic_fallback",
-                "note": "Set GROQ_API_KEY to enable full LLM extraction.",
+                "note": note,
             },
         }
 
