@@ -1,0 +1,34 @@
+# python virtual environments
+backend/llmvenv/
+backend/.venv/
+.venv/
+venv/
+
+# python cache/build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# env files
+.env
+.env.*
+!.env.example
+backend/.env
+
+# logs and local runtime data
+*.log
+backend/uploads/
+uploads/
+backend/exports/
+exports/
+
+# node
+node_modules/
+
+# editor/system
+.vscode/
+.DS_Store
+Thumbs.db
