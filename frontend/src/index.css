@@ -1,0 +1,58 @@
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --ink: #1a1a1a;
+  --soft: #666666;
+  --line: #d0d0d0;
+  --panel: #f9f9f9;
+  --accent: #333333;
+  --accent-2: #555555;
+  --sans: Arial, 'Segoe UI', sans-serif;
+  --heading: Arial, 'Segoe UI', sans-serif;
+  --mono: 'Courier New', Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--bg);
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--heading);
+  letter-spacing: 0;
+}
+
+p {
+  line-height: 1.55;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: #333333;
+  color: #ffffff;
+}
